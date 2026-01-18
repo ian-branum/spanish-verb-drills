@@ -211,7 +211,7 @@ export default function Home() {
   if (!selectedTense || tenses.length === 0) {
     return (
       <div className="wrap">
-        <h1>Spanish Tenses (A1–C1) • Regular Conjugations & Examples</h1>
+        <h1>Spanish Tenses (A1–C1)</h1>
         <div>Loading...</div>
       </div>
     );
@@ -393,7 +393,7 @@ export default function Home() {
               {selectedTense.name} — {selectedTense.level}
             </h3>
             <div className="muted">{selectedTense.desc}</div>
-            <div style={{ marginTop: '10px' }}>
+            <div style={{ marginTop: '10px' }} className="tableScroll">
               <table>
                 <thead>
                   <tr>
@@ -466,7 +466,7 @@ export default function Home() {
           <div className="swipeHint muted">Tip: swipe left/right</div>
 
           {infoPanel === 'conjugations' ? (
-            <div style={{ marginTop: '10px' }}>
+            <div style={{ marginTop: '10px' }} className="tableScroll">
               <table>
                 <thead>
                   <tr>

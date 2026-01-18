@@ -152,10 +152,18 @@ h2 {
   margin-top: 6px;
 }
 
+.tableScroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 th,
@@ -163,6 +171,17 @@ td {
   border-bottom: 1px solid #e5e7eb;
   padding: 6px 8px;
   text-align: left;
+  overflow-wrap: anywhere;
+}
+
+th:not(:first-child),
+td:not(:first-child) {
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  width: 42%;
 }
 
 th {
@@ -238,7 +257,7 @@ input.answer {
   align-items: center;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 900px) {
   .tenseSelect {
     display: block;
   }
@@ -249,6 +268,11 @@ input.answer {
 
   .swipeHint {
     display: block;
+  }
+
+  th,
+  td {
+    padding: 6px;
   }
 }
 
