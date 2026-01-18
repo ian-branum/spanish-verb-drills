@@ -1,10 +1,36 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Tense } from './api/tense/route';
 import type { Question } from './api/question/route';
 
 const persons = ["yo", "tú", "él/ella/usted", "nosotros", "vosotros", "ellos/ellas/ustedes"];
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+
+    onChange();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    }
+
+    // Safari < 14
+    // eslint-disable-next-line deprecation/deprecation
+    mql.addListener(onChange);
+    // eslint-disable-next-line deprecation/deprecation
+    return () => mql.removeListener(onChange);
+  }, [query]);
+
+  return matches;
+}
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = arr.slice();
@@ -24,6 +50,8 @@ export default function Home() {
   const [tenses, setTenses] = useState<Tense[]>([]);
   const [baseQuestions, setBaseQuestions] = useState<Question[]>([]);
   const [selectedTense, setSelectedTense] = useState<Tense | null>(null);
+  const [infoPanel, setInfoPanel] = useState<'conjugations' | 'examples'>('conjugations');
+  const isLarge = useMediaQuery('(min-width: 900px)');
   const [drillQuestions, setDrillQuestions] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answerInput, setAnswerInput] = useState('');
@@ -34,6 +62,8 @@ export default function Home() {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [generateCount, setGenerateCount] = useState('20');
+  const infoTouchStart = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     // Fetch tenses from API
@@ -58,14 +88,15 @@ export default function Home() {
 
   const generateQuestions = useCallback(() => {
       setIsGenerating(true);
-      fetch(`/api/question?count=20&generate=true`)
+      console.log(`Generating ${generateCount} questions`);
+      fetch(`/api/question?count=${generateCount}&generate=true`)
         .then(res => res.json())
         .then(data => {
           setBaseQuestions(data);
         })
         .catch(err => console.error('Error generating questions:', err))
         .finally(() => setIsGenerating(false));
-    }, []);
+    }, [generateCount]);
 
   const reshuffle = useCallback(() => {
     if (baseQuestions.length === 0) return;
@@ -107,8 +138,11 @@ export default function Home() {
   const showHint = useCallback(() => {
     if (drillQuestions.length === 0) return;
     const q = drillQuestions[currentQuestion];
-    setDrillStatus({ text: `Hint: ${q.tense}`, className: 'status' });
-  }, [drillQuestions, currentQuestion]);
+    const matchingTense = tenses.find((t) => t.id === q.tense);
+    if (matchingTense) {
+      setSelectedTense(matchingTense);
+    }
+  }, [drillQuestions, currentQuestion, tenses]);
 
   const nextQuestion = useCallback(() => {
     if (drillQuestions.length === 0) return;
@@ -149,6 +183,30 @@ export default function Home() {
 
   const currentQ = drillQuestions[currentQuestion];
   const [before, after] = currentQ?.es.split('__') || ['', ''];
+
+  const handleInfoTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    if (!t) return;
+    infoTouchStart.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handleInfoTouchEnd = (e: React.TouchEvent) => {
+    const start = infoTouchStart.current;
+    infoTouchStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+
+    // Require a fairly intentional horizontal swipe.
+    if (Math.abs(dx) < 60) return;
+    if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+
+    if (dx < 0) setInfoPanel('examples'); // swipe left
+    else setInfoPanel('conjugations'); // swipe right
+  };
 
   if (!selectedTense || tenses.length === 0) {
     return (
@@ -299,8 +357,24 @@ export default function Home() {
         </div>
       )}
       <div className="wrap">
-      <h1>Spanish Tenses (A1–C1) • Regular Conjugations & Examples</h1>
-      <div className="chips">
+      <h1>Spanish Tenses (A1–C1) {isLarge ? "• Regular Conjugations & Examples" : ""}</h1>
+      <div className="tenseSelect">
+        <select
+          aria-label="Select tense"
+          value={selectedTense.id}
+          onChange={(e) => {
+            const next = tenses.find((t) => t.id === e.target.value);
+            if (next) setSelectedTense(next);
+          }}
+        >
+          {tenses.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="chips tenseChips">
         {tenses.map((t) => (
           <div
             key={t.id}
@@ -311,48 +385,124 @@ export default function Home() {
           </div>
         ))}
       </div>
-      <div className="grid">
-        <div className="card">
-          <h3 style={{ margin: '0 0 6px' }}>
-            {selectedTense.name} — {selectedTense.level}
-          </h3>
-          <div className="muted">{selectedTense.desc}</div>
-          <div style={{ marginTop: '10px' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th>-ar</th>
-                  <th>-er</th>
-                  <th>-ir</th>
-                </tr>
-              </thead>
-              <tbody>
-                {persons.map((p, i) => (
-                  <tr key={i}>
-                    <td>{p}</td>
-                    <td>{selectedTense.endings.ar[i]}</td>
-                    <td>{selectedTense.endings.er[i]}</td>
-                    <td>{selectedTense.endings.ir[i]}</td>
+
+      {isLarge ? (
+        <div className="grid">
+          <div className="card">
+            <h3 style={{ margin: '0 0 6px' }}>
+              {selectedTense.name} — {selectedTense.level}
+            </h3>
+            <div className="muted">{selectedTense.desc}</div>
+            <div style={{ marginTop: '10px' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>-ar</th>
+                    <th>-er</th>
+                    <th>-ir</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {persons.map((p, i) => (
+                    <tr key={i}>
+                      <td>{p}</td>
+                      <td>{selectedTense.endings.ar[i]}</td>
+                      <td>{selectedTense.endings.er[i]}</td>
+                      <td>{selectedTense.endings.ir[i]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="card">
+            <h3 style={{ margin: '0 0 6px' }}>Examples</h3>
+            <ul className="examples">
+              {selectedTense.examples.map((ex, i) => (
+                <li key={i}>
+                  <b>{ex[0]}</b>
+                  <br />
+                  <span className="muted">{ex[1]}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
-        <div className="card">
-          <h3 style={{ margin: '0 0 6px' }}>Examples</h3>
-          <ul className="examples">
-            {selectedTense.examples.map((ex, i) => (
-              <li key={i}>
-                <b>{ex[0]}</b>
-                <br />
-                <span className="muted">{ex[1]}</span>
-              </li>
-            ))}
-          </ul>
+      ) : (
+        <div
+          className="card infoCard"
+          onTouchStart={handleInfoTouchStart}
+          onTouchEnd={handleInfoTouchEnd}
+        >
+          <div className="infoHeader">
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: '0 0 6px' }}>
+                {selectedTense.name} — {selectedTense.level}
+              </h3>
+              <div className="muted">{selectedTense.desc}</div>
+            </div>
+            <div className="panelTabs" role="tablist" aria-label="Tense details">
+              <button
+                type="button"
+                className={`panelTab ${infoPanel === 'conjugations' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={infoPanel === 'conjugations'}
+                onClick={() => setInfoPanel('conjugations')}
+              >
+                Conjugations
+              </button>
+              <button
+                type="button"
+                className={`panelTab ${infoPanel === 'examples' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={infoPanel === 'examples'}
+                onClick={() => setInfoPanel('examples')}
+              >
+                Examples
+              </button>
+            </div>
+          </div>
+          <div className="swipeHint muted">Tip: swipe left/right</div>
+
+          {infoPanel === 'conjugations' ? (
+            <div style={{ marginTop: '10px' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>-ar</th>
+                    <th>-er</th>
+                    <th>-ir</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {persons.map((p, i) => (
+                    <tr key={i}>
+                      <td>{p}</td>
+                      <td>{selectedTense.endings.ar[i]}</td>
+                      <td>{selectedTense.endings.er[i]}</td>
+                      <td>{selectedTense.endings.ir[i]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ marginTop: '10px' }}>
+              <ul className="examples">
+                {selectedTense.examples.map((ex, i) => (
+                  <li key={i}>
+                    <b>{ex[0]}</b>
+                    <br />
+                    <span className="muted">{ex[1]}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         Let's Practice!
@@ -401,17 +551,23 @@ export default function Home() {
       </div>
       <div className="nav">
         <button className="btn ghost" onClick={prevQuestion}>
-          Previous
+          Prev
         </button>
         <button className={`btn ${hasChecked ? 'primary' : 'ghost'}`} onClick={nextQuestion}>
           Next
         </button>
         <button className="btn ghost" onClick={reshuffle}>
-          Reshuffle
+          Shuffle
         </button>
         <button className="btn ghost" onClick={generateQuestions}>
           Generate
         </button>
+        <select className="btn ghost" value={generateCount} onChange={(e) => setGenerateCount(e.target.value)} >
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
       </div>
       </div>
     </>
