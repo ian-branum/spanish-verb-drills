@@ -29,6 +29,7 @@ Generate {COUNT} Spanish fill-in-the-blank exercises for the following tenses: {
 7. Provide accurate English translations
 8. Ensure the answer is the correctly conjugated verb only (no additional words)
 9. Include time markers or context clues when appropriate (e.g., "ayer" for preterite, "mañana" for future)
+10. If the verb includes an auxiliary verb, include it in the answer. Ex: "Nosotros hemos visitado a . . ." -> answer: "hemos visitado"
 
 ## Output Format
 Return ONLY a valid JSON array with no additional text or markdown. Each object must have exactly these fields:

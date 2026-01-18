@@ -31,6 +31,9 @@ export default function Home() {
   const [usKeyboard, setUsKeyboard] = useState(true);
   const [hasChecked, setHasChecked] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     // Fetch tenses from API
@@ -134,6 +137,16 @@ export default function Home() {
     }
   };
 
+  const authenticate = useCallback(() => {
+    if (password === 'secreto') {
+      setAuthenticated(true);
+      setAuthError('');
+      return;
+    }
+    setAuthError('Incorrect password. Please try again.');
+    setPassword('');
+  }, [password]);
+
   const currentQ = drillQuestions[currentQuestion];
   const [before, after] = currentQ?.es.split('__') || ['', ''];
 
@@ -147,7 +160,109 @@ export default function Home() {
   }
 
   return (
-    <>
+    <>{!authenticated && (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(17, 24, 39, 0.35)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '18px',
+      }}>
+        <div
+          style={{
+            width: '420px',
+            maxWidth: '100%',
+            background: 'var(--card)',
+            border: '1px solid #e5e7eb',
+            borderRadius: '16px',
+            padding: '16px',
+            boxShadow: '0 16px 45px rgba(0, 0, 0, 0.22)',
+            color: 'var(--ink)',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+              Protected
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 800, lineHeight: 1.2 }}>
+              Password required
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.35 }}>
+              Enter the password to continue.
+            </div>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              authenticate();
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+          >
+            <label htmlFor="auth-password" style={{ fontSize: '13px', fontWeight: 650 }}>
+              Password
+            </label>
+            <input
+              id="auth-password"
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (authError) setAuthError('');
+              }}
+              autoFocus
+              autoComplete="current-password"
+              spellCheck={false}
+              style={{
+                width: '100%',
+                border: '1px solid #d1d5db',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '14px',
+                outline: 'none',
+              }}
+            />
+
+            {authError && (
+              <div
+                role="alert"
+                style={{
+                  fontSize: '13px',
+                  color: 'var(--bad)',
+                  background: 'rgba(220, 38, 38, 0.08)',
+                  border: '1px solid rgba(220, 38, 38, 0.22)',
+                  borderRadius: '10px',
+                  padding: '8px 10px',
+                }}
+              >
+                {authError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn primary"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: '14px',
+                borderRadius: '10px',
+              }}
+            >
+              Authenticate
+            </button>
+          </form>
+        </div>
+      </div>
+    )}
       {isGenerating && (
         <div style={{
           position: 'fixed',
@@ -240,14 +355,14 @@ export default function Home() {
       </div>
 
       <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        Drill Practice
+        Let's Practice!
         <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'normal' }}>
           <input
             type="checkbox"
             checked={usKeyboard}
             onChange={(e) => setUsKeyboard(e.target.checked)}
           />
-          US Keyboard
+          US Keyboard (sloppy match on spanish letters)
         </label>
       </h2>
       <div className="card drill-card">
