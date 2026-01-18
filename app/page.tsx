@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Tense } from './api/tense/route';
 import type { Question } from './api/question/route';
 
-const persons = ["yo", "tú", "él/ella/usted", "nosotros", "vosotros", "ellos/ellas/ustedes"];
+const persons = ["yo", "tú", "él/ella/ud", "nosotros", "vosotros", "ellos/ellas/uds"];
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => {
@@ -397,10 +397,10 @@ export default function Home() {
               <table>
                 <thead>
                   <tr>
-                    <th>Person</th>
-                    <th>-ar</th>
-                    <th>-er</th>
-                    <th>-ir</th>
+                    <th style={{ width: '25%' }}>Person</th>
+                    <th style={{ width: '25%' }}>-ar</th>
+                    <th style={{ width: '25%' }}>-er</th>
+                    <th style={{ width: '25%' }}>-ir</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -512,7 +512,7 @@ export default function Home() {
             checked={usKeyboard}
             onChange={(e) => setUsKeyboard(e.target.checked)}
           />
-          US Keyboard (sloppy match on spanish letters)
+          US Keyboard {isLarge ? "(sloppy match on spanish letters)" : ""}
         </label>
       </h2>
       <div className="card drill-card">
