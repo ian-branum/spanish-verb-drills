@@ -1,65 +1,304 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import type { Tense } from './api/tense/route';
+import type { Question } from './api/question/route';
+
+const persons = ["yo", "tú", "él/ella/usted", "nosotros", "vosotros", "ellos/ellas/ustedes"];
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function normalize(str: string): string {
+  return str.toLowerCase().trim().replace(/\s+/g, ' ')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
 
 export default function Home() {
+  const [tenses, setTenses] = useState<Tense[]>([]);
+  const [baseQuestions, setBaseQuestions] = useState<Question[]>([]);
+  const [selectedTense, setSelectedTense] = useState<Tense | null>(null);
+  const [drillQuestions, setDrillQuestions] = useState<Question[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answerInput, setAnswerInput] = useState('');
+  const [drillStatus, setDrillStatus] = useState<{ text: string; className: string }>({ text: '', className: 'status' });
+  const [usKeyboard, setUsKeyboard] = useState(true);
+  const [hasChecked, setHasChecked] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    // Fetch tenses from API
+    fetch('/api/tense')
+      .then(res => res.json())
+      .then(data => {
+        setTenses(data);
+        if (data.length > 0) {
+          setSelectedTense(data[0]);
+        }
+      })
+      .catch(err => console.error('Error fetching tenses:', err));
+
+    // Fetch questions from API
+    fetch('/api/question')
+      .then(res => res.json())
+      .then(data => {
+        setBaseQuestions(data);
+      })
+      .catch(err => console.error('Error fetching questions:', err));
+  }, []);
+
+  const generateQuestions = useCallback(() => {
+      setIsGenerating(true);
+      fetch(`/api/question?count=20&generate=true`)
+        .then(res => res.json())
+        .then(data => {
+          setBaseQuestions(data);
+        })
+        .catch(err => console.error('Error generating questions:', err))
+        .finally(() => setIsGenerating(false));
+    }, []);
+
+  const reshuffle = useCallback(() => {
+    if (baseQuestions.length === 0) return;
+    const shuffled = shuffleArray(baseQuestions);
+    setDrillQuestions(shuffled);
+    setCurrentQuestion(0);
+    setAnswerInput('');
+    setDrillStatus({ text: '', className: 'status' });
+    setHasChecked(false);
+  }, [baseQuestions]);
+
+  useEffect(() => {
+    if (baseQuestions.length > 0) {
+      reshuffle();
+    }
+  }, [baseQuestions, reshuffle]);
+
+  const checkAnswer = useCallback(() => {
+    if (drillQuestions.length === 0) return;
+    const q = drillQuestions[currentQuestion];
+    const isCorrect = usKeyboard
+      ? normalize(answerInput) === normalize(q.answer)
+      : answerInput.trim() === q.answer.trim();
+    if (isCorrect) {
+      setDrillStatus({ text: 'Correct ✅', className: 'status ok' });
+    } else {
+      setDrillStatus({ text: `Not quite. Correct: ${q.answer}`, className: 'status bad' });
+    }
+    setHasChecked(true);
+  }, [drillQuestions, currentQuestion, answerInput, usKeyboard]);
+
+  const showAnswer = useCallback(() => {
+    if (drillQuestions.length === 0) return;
+    const q = drillQuestions[currentQuestion];
+    setAnswerInput(q.answer);
+    setDrillStatus({ text: `Answer shown: ${q.answer}`, className: 'status' });
+  }, [drillQuestions, currentQuestion]);
+
+  const showHint = useCallback(() => {
+    if (drillQuestions.length === 0) return;
+    const q = drillQuestions[currentQuestion];
+    setDrillStatus({ text: `Hint: ${q.tense}`, className: 'status' });
+  }, [drillQuestions, currentQuestion]);
+
+  const nextQuestion = useCallback(() => {
+    if (drillQuestions.length === 0) return;
+    setCurrentQuestion((prev) => (prev + 1) % drillQuestions.length);
+    setAnswerInput('');
+    setDrillStatus({ text: '', className: 'status' });
+    setHasChecked(false);
+  }, [drillQuestions.length]);
+
+  const prevQuestion = useCallback(() => {
+    if (drillQuestions.length === 0) return;
+    setCurrentQuestion((prev) => (prev - 1 + drillQuestions.length) % drillQuestions.length);
+    setAnswerInput('');
+    setDrillStatus({ text: '', className: 'status' });
+    setHasChecked(false);
+  }, [drillQuestions.length]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (hasChecked) {
+        nextQuestion();
+      } else {
+        checkAnswer();
+      }
+    }
+  };
+
+  const currentQ = drillQuestions[currentQuestion];
+  const [before, after] = currentQ?.es.split('__') || ['', ''];
+
+  if (!selectedTense || tenses.length === 0) {
+    return (
+      <div className="wrap">
+        <h1>Spanish Tenses (A1–C1) • Regular Conjugations & Examples</h1>
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      {isGenerating && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(255, 255, 255, 0.8)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '16px',
+            fontWeight: 500,
+            color: 'var(--ink)',
+          }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              border: '3px solid #e5e7eb',
+              borderTopColor: 'var(--accent)',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }}></div>
+            <div>Generating</div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      )}
+      <div className="wrap">
+      <h1>Spanish Tenses (A1–C1) • Regular Conjugations & Examples</h1>
+      <div className="chips">
+        {tenses.map((t) => (
+          <div
+            key={t.id}
+            className={`chip ${selectedTense.id === t.id ? 'active' : ''}`}
+            onClick={() => setSelectedTense(t)}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {t.name}
+          </div>
+        ))}
+      </div>
+      <div className="grid">
+        <div className="card">
+          <h3 style={{ margin: '0 0 6px' }}>
+            {selectedTense.name} — {selectedTense.level}
+          </h3>
+          <div className="muted">{selectedTense.desc}</div>
+          <div style={{ marginTop: '10px' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Person</th>
+                  <th>-ar</th>
+                  <th>-er</th>
+                  <th>-ir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {persons.map((p, i) => (
+                  <tr key={i}>
+                    <td>{p}</td>
+                    <td>{selectedTense.endings.ar[i]}</td>
+                    <td>{selectedTense.endings.er[i]}</td>
+                    <td>{selectedTense.endings.ir[i]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </main>
-    </div>
+        <div className="card">
+          <h3 style={{ margin: '0 0 6px' }}>Examples</h3>
+          <ul className="examples">
+            {selectedTense.examples.map((ex, i) => (
+              <li key={i}>
+                <b>{ex[0]}</b>
+                <br />
+                <span className="muted">{ex[1]}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        Drill Practice
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'normal' }}>
+          <input
+            type="checkbox"
+            checked={usKeyboard}
+            onChange={(e) => setUsKeyboard(e.target.checked)}
+          />
+          US Keyboard
+        </label>
+      </h2>
+      <div className="card drill-card">
+        {currentQ && (
+          <>
+            <div style={{ fontSize: '16px' }}>
+              <b>
+                {before}
+                <input
+                  className="answer"
+                  value={answerInput}
+                  onChange={(e) => setAnswerInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="verbo"
+                />
+                {after}
+              </b>
+            </div>
+            <div className="muted">{currentQ.en}</div>
+            <div className={drillStatus.className}>
+              {drillStatus.text || `Question ${currentQuestion + 1} of ${drillQuestions.length}`}
+            </div>
+            <div className="drill-actions">
+              <button className={`btn ${!hasChecked ? 'primary' : ''}`} onClick={checkAnswer}>
+                Check
+              </button>
+              <button className="btn" onClick={showHint}>
+                Hint
+              </button>
+              <button className="btn" onClick={showAnswer}>
+                Show
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="nav">
+        <button className="btn ghost" onClick={prevQuestion}>
+          Previous
+        </button>
+        <button className={`btn ${hasChecked ? 'primary' : 'ghost'}`} onClick={nextQuestion}>
+          Next
+        </button>
+        <button className="btn ghost" onClick={reshuffle}>
+          Reshuffle
+        </button>
+        <button className="btn ghost" onClick={generateQuestions}>
+          Generate
+        </button>
+      </div>
+      </div>
+    </>
   );
 }
