@@ -506,7 +506,7 @@ export default function Home() {
       )}
 
       <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        Let's Practice!
+      ¡Vamos a practicar!
         <button
           type="button"
           onClick={() => setTranslationLang(translationLang === 'en' ? 'fr' : 'en')}
