@@ -17,8 +17,10 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 export type Question = {
   es: string;
   en: string;
+  fr: string;
   answer: string;
   tense: string;
+  inf: string;
 };
 
 //const baseQuestionsList: Question[] = baseQuestions;

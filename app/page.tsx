@@ -63,6 +63,7 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [generateCount, setGenerateCount] = useState('20');
+  const [translationLang, setTranslationLang] = useState<'en' | 'fr'>('en');
   const infoTouchStart = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -211,7 +212,7 @@ export default function Home() {
   if (!selectedTense || tenses.length === 0) {
     return (
       <div className="wrap">
-        <h1>Spanish Tenses (A1–C1)</h1>
+        <h1>Tiempos verbales (A1–C1)</h1>
         <div>Loading...</div>
       </div>
     );
@@ -357,7 +358,7 @@ export default function Home() {
         </div>
       )}
       <div className="wrap">
-      <h1>Spanish Tenses (A1–C1) {isLarge ? "• Regular Conjugations & Examples" : ""}</h1>
+      <h1>Tiempos verbales (A1–C1) {isLarge ? "• Conjugaciones y Ejemplos" : ""}</h1>
       <div className="tenseSelect">
         <select
           aria-label="Select tense"
@@ -504,15 +505,32 @@ export default function Home() {
         </div>
       )}
 
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         Let's Practice!
+        <button
+          type="button"
+          onClick={() => setTranslationLang(translationLang === 'en' ? 'fr' : 'en')}
+          title={translationLang === 'en' ? 'Switch to French translations' : 'Switch to English translations'}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '20px',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            lineHeight: 1,
+          }}
+          aria-label={translationLang === 'en' ? 'Switch to French translations' : 'Switch to English translations'}
+        >
+          {translationLang === 'en' ? '🇬🇧' : '🇫🇷'}
+        </button>
         <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 'normal' }}>
           <input
             type="checkbox"
             checked={usKeyboard}
             onChange={(e) => setUsKeyboard(e.target.checked)}
           />
-          US Keyboard {isLarge ? "(sloppy match on spanish letters)" : ""}
+          Teclado no español {isLarge ? "(coincidencia aproximada en letras españolas)" : ""}
         </label>
       </h2>
       <div className="card drill-card">
@@ -526,12 +544,12 @@ export default function Home() {
                   value={answerInput}
                   onChange={(e) => setAnswerInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="verbo"
+                  placeholder={currentQ.inf}
                 />
                 {after}
               </b>
             </div>
-            <div className="muted">{currentQ.en}</div>
+            <div className="muted">{translationLang === 'en' ? currentQ.en : currentQ.fr}</div>
             <div className={drillStatus.className}>
               {drillStatus.text || `Question ${currentQuestion + 1} of ${drillQuestions.length}`}
             </div>
