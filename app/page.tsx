@@ -63,8 +63,17 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [generateCount, setGenerateCount] = useState('20');
+  const [generateTitle, setGenerateTitle] = useState('');
   const [translationLang, setTranslationLang] = useState<'en' | 'fr'>('en');
   const infoTouchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const [questionSetsModalOpen, setQuestionSetsModalOpen] = useState(false);
+  const [availableSets, setAvailableSets] = useState<{ id: string; title: string }[]>([]);
+  const [selectedSetId, setSelectedSetId] = useState('');
+  const [useAllTenses, setUseAllTenses] = useState(true);
+  const [selectedTenseIds, setSelectedTenseIds] = useState<Set<string>>(new Set());
+  const [tenseDropdownOpen, setTenseDropdownOpen] = useState(false);
+  const tenseDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Fetch tenses from API
@@ -87,17 +96,75 @@ export default function Home() {
       .catch(err => console.error('Error fetching questions:', err));
   }, []);
 
-  const generateQuestions = useCallback(() => {
-      setIsGenerating(true);
-      console.log(`Generating ${generateCount} questions`);
-      fetch(`/api/question?count=${generateCount}&generate=true`)
-        .then(res => res.json())
-        .then(data => {
-          setBaseQuestions(data);
-        })
-        .catch(err => console.error('Error generating questions:', err))
-        .finally(() => setIsGenerating(false));
-    }, [generateCount]);
+  const generateQuestions = useCallback((count: string, tenses: string[] | null, title?: string) => {
+    setIsGenerating(true);
+    const params = new URLSearchParams({ count, generate: 'true' });
+    if (tenses && tenses.length > 0) params.set('tenses', tenses.join(','));
+    const t = (title ?? '').trim();
+    if (t) params.set('title', t);
+    fetch(`/api/question?${params}`)
+      .then(res => res.json())
+      .then((data: { questions?: Question[] } | Question[]) => {
+        const qs = Array.isArray(data) ? data : (data.questions ?? []);
+        setBaseQuestions(qs);
+      })
+      .catch(err => console.error('Error generating questions:', err))
+      .finally(() => setIsGenerating(false));
+  }, []);
+
+  const fetchQuestionSetList = useCallback(() => {
+    fetch('/api/question?list=true')
+      .then(res => res.json())
+      .then((data: { sets: { id: string; title: string }[] }) => {
+        const sets = Array.isArray(data?.sets) ? data.sets : [];
+        setAvailableSets(sets);
+        setSelectedSetId(sets[0]?.id ?? '');
+      })
+      .catch(err => console.error('Error fetching question set list:', err));
+  }, []);
+
+  const openQuestionSetsModal = useCallback(() => {
+    setQuestionSetsModalOpen(true);
+    fetchQuestionSetList();
+  }, [fetchQuestionSetList]);
+
+  const selectQuestionSet = useCallback((id: string) => {
+    if (!id) return;
+    fetch(`/api/question?id=${encodeURIComponent(id)}`)
+      .then(res => res.json())
+      .then((data: Question[] | { questions?: Question[] } | null) => {
+        const qs = data == null
+          ? []
+          : Array.isArray(data)
+            ? data
+            : (data.questions ?? []);
+        setBaseQuestions(qs);
+        setQuestionSetsModalOpen(false);
+      })
+      .catch(err => console.error('Error fetching question set:', err));
+  }, []);
+
+  const handleGenerateFromModal = useCallback(() => {
+    setQuestionSetsModalOpen(false);
+    const tenses = useAllTenses ? null : Array.from(selectedTenseIds);
+    const title = generateTitle.trim() || `${generateCount} questions`;
+    generateQuestions(generateCount, tenses, title);
+  }, [generateCount, generateTitle, useAllTenses, selectedTenseIds, generateQuestions]);
+
+  const toggleTense = useCallback((id: string) => {
+    setUseAllTenses(false);
+    setSelectedTenseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAllTenses = useCallback(() => {
+    setUseAllTenses(true);
+    setSelectedTenseIds(new Set());
+  }, []);
 
   const reshuffle = useCallback(() => {
     if (baseQuestions.length === 0) return;
@@ -114,6 +181,17 @@ export default function Home() {
       reshuffle();
     }
   }, [baseQuestions, reshuffle]);
+
+  useEffect(() => {
+    if (!tenseDropdownOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (tenseDropdownRef.current && !tenseDropdownRef.current.contains(e.target as Node)) {
+        setTenseDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [tenseDropdownOpen]);
 
   const checkAnswer = useCallback(() => {
     if (drillQuestions.length === 0) return;
@@ -357,6 +435,222 @@ export default function Home() {
           </div>
         </div>
       )}
+      {questionSetsModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(17, 24, 39, 0.35)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001,
+            padding: '18px',
+          }}
+        >
+          <div
+            style={{
+              width: '50vw',
+              minWidth: '320px',
+              maxWidth: '640px',
+              height: '50vh',
+              minHeight: '360px',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              background: 'var(--card)',
+              border: '1px solid #e5e7eb',
+              borderRadius: '16px',
+              padding: '24px',
+              boxShadow: '0 16px 45px rgba(0, 0, 0, 0.22)',
+              color: 'var(--ink)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Question Sets</h3>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => setQuestionSetsModalOpen(false)}
+                aria-label="Close"
+              >
+                Close
+              </button>
+            </div>
+
+            <section style={{ marginBottom: '8px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
+                Load existing set
+              </div>
+              <select
+                aria-label="Select question set"
+                value={selectedSetId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedSetId(id);
+                  if (id) selectQuestionSet(id);
+                }}
+                style={{
+                  width: '100%',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '10px',
+                  padding: '8px 10px',
+                  fontSize: '14px',
+                  background: 'var(--card)',
+                  color: 'var(--ink)',
+                }}
+              >
+                {availableSets.length === 0 && (
+                  <option value="">No sets available</option>
+                )}
+                {availableSets.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </section>
+
+            <div
+              style={{
+                borderTop: '1px solid #e5e7eb',
+                margin: '20px 0 24px',
+              }}
+              aria-hidden
+            />
+
+            <section>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
+                Generate new set
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label htmlFor="generate-title" style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+                  Title
+                </label>
+                <input
+                  id="generate-title"
+                  type="text"
+                  value={generateTitle}
+                  onChange={(e) => setGenerateTitle(e.target.value)}
+                  placeholder={`e.g. ${generateCount} questions`}
+                  style={{
+                    width: '100%',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '10px',
+                    padding: '8px 12px',
+                    fontSize: '14px',
+                    background: 'var(--card)',
+                    color: 'var(--ink)',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={handleGenerateFromModal}
+                  disabled={isGenerating}
+                >
+                  Generate
+                </button>
+                <select
+                  aria-label="Number of questions"
+                  className="btn ghost"
+                  value={generateCount}
+                  onChange={(e) => setGenerateCount(e.target.value)}
+                  style={{ padding: '6px 10px' }}
+                >
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <div ref={tenseDropdownRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTenseDropdownOpen((o) => !o);
+                    }}
+                    aria-expanded={tenseDropdownOpen}
+                    aria-haspopup="listbox"
+                    style={{ padding: '6px 10px', minWidth: '140px' }}
+                  >
+                    {useAllTenses
+                      ? 'All tenses'
+                      : selectedTenseIds.size === 0
+                        ? 'Select tenses'
+                        : `${selectedTenseIds.size} tense${selectedTenseIds.size !== 1 ? 's' : ''} selected`}
+                  </button>
+                  {tenseDropdownOpen && (
+                    <div
+                      role="listbox"
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        marginTop: '4px',
+                        background: 'var(--card)',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '10px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        padding: '8px',
+                        minWidth: '200px',
+                        maxHeight: '220px',
+                        overflowY: 'auto',
+                        zIndex: 10,
+                      }}
+                    >
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '6px 8px',
+                          cursor: 'pointer',
+                          borderRadius: '6px',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={useAllTenses}
+                          onChange={selectAllTenses}
+                        />
+                        <span style={{ fontWeight: 600 }}>All</span>
+                      </label>
+                      {tenses.map((t) => (
+                        <label
+                          key={t.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 8px',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!useAllTenses && selectedTenseIds.has(t.id)}
+                            onChange={() => toggleTense(t.id)}
+                          />
+                          <span>{t.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
       <div className="wrap">
       <h1>Tiempos verbales (A1–C1) {isLarge ? "• Conjugaciones y Ejemplos" : ""}</h1>
       <div className="tenseSelect">
@@ -577,15 +871,9 @@ export default function Home() {
         <button className="btn ghost" onClick={reshuffle}>
           Shuffle
         </button>
-        <button className="btn ghost" onClick={generateQuestions}>
-          Generate
+        <button className="btn ghost" onClick={openQuestionSetsModal}>
+          Question Sets
         </button>
-        <select className="btn ghost" value={generateCount} onChange={(e) => setGenerateCount(e.target.value)} >
-          <option value="10">10</option>
-          <option value="20">20</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
       </div>
       </div>
     </>
