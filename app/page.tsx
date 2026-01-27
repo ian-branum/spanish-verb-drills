@@ -61,6 +61,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [authError, setAuthError] = useState('');
   const [generateCount, setGenerateCount] = useState('20');
   const [generateTitle, setGenerateTitle] = useState('');
@@ -97,8 +98,9 @@ export default function Home() {
   }, []);
 
   const generateQuestions = useCallback((count: string, tenses: string[] | null, title?: string) => {
+    if (!username) return;
     setIsGenerating(true);
-    const params = new URLSearchParams({ count, generate: 'true' });
+    const params = new URLSearchParams({ count, generate: 'true', username });
     if (tenses && tenses.length > 0) params.set('tenses', tenses.join(','));
     const t = (title ?? '').trim();
     if (t) params.set('title', t);
@@ -110,18 +112,19 @@ export default function Home() {
       })
       .catch(err => console.error('Error generating questions:', err))
       .finally(() => setIsGenerating(false));
-  }, []);
+  }, [username]);
 
   const fetchQuestionSetList = useCallback(() => {
-    fetch('/api/question?list=true')
+    if (!username) return;
+    fetch(`/api/question?list=true&username=${encodeURIComponent(username)}`)
       .then(res => res.json())
       .then((data: { sets: { id: string; title: string }[] }) => {
         const sets = Array.isArray(data?.sets) ? data.sets : [];
         setAvailableSets(sets);
-        setSelectedSetId(sets[0]?.id ?? '');
+        setSelectedSetId('');
       })
       .catch(err => console.error('Error fetching question set list:', err));
-  }, []);
+  }, [username]);
 
   const openQuestionSetsModal = useCallback(() => {
     setQuestionSetsModalOpen(true);
@@ -129,8 +132,8 @@ export default function Home() {
   }, [fetchQuestionSetList]);
 
   const selectQuestionSet = useCallback((id: string) => {
-    if (!id) return;
-    fetch(`/api/question?id=${encodeURIComponent(id)}`)
+    if (!id || !username) return;
+    fetch(`/api/question?id=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}`)
       .then(res => res.json())
       .then((data: Question[] | { questions?: Question[] } | null) => {
         const qs = data == null
@@ -142,12 +145,12 @@ export default function Home() {
         setQuestionSetsModalOpen(false);
       })
       .catch(err => console.error('Error fetching question set:', err));
-  }, []);
+  }, [username]);
 
   const handleGenerateFromModal = useCallback(() => {
     setQuestionSetsModalOpen(false);
     const tenses = useAllTenses ? null : Array.from(selectedTenseIds);
-    const title = generateTitle.trim() || `${generateCount} questions`;
+    const title = generateTitle.trim() || `${generateCount} preguntas`;
     generateQuestions(generateCount, tenses, title);
   }, [generateCount, generateTitle, useAllTenses, selectedTenseIds, generateQuestions]);
 
@@ -200,9 +203,9 @@ export default function Home() {
       ? normalize(answerInput) === normalize(q.answer)
       : answerInput.trim() === q.answer.trim();
     if (isCorrect) {
-      setDrillStatus({ text: 'Correct ✅', className: 'status ok' });
+      setDrillStatus({ text: 'Correcto ✅', className: 'status ok' });
     } else {
-      setDrillStatus({ text: `Not quite. Correct: ${q.answer}`, className: 'status bad' });
+      setDrillStatus({ text: `No es correcto. Correcto: ${q.answer}`, className: 'status bad' });
     }
     setHasChecked(true);
   }, [drillQuestions, currentQuestion, answerInput, usKeyboard]);
@@ -211,7 +214,7 @@ export default function Home() {
     if (drillQuestions.length === 0) return;
     const q = drillQuestions[currentQuestion];
     setAnswerInput(q.answer);
-    setDrillStatus({ text: `Answer shown: ${q.answer}`, className: 'status' });
+    setDrillStatus({ text: `Respuesta mostrada: ${q.answer}`, className: 'status' });
   }, [drillQuestions, currentQuestion]);
 
   const showHint = useCallback(() => {
@@ -252,13 +255,17 @@ export default function Home() {
 
   const authenticate = useCallback(() => {
     if (password === 'secreto') {
+      if (!username.trim()) {
+        setAuthError('Por favor ingresa un nombre de usuario.');
+        return;
+      }
       setAuthenticated(true);
       setAuthError('');
       return;
     }
-    setAuthError('Incorrect password. Please try again.');
+    setAuthError('Contraseña incorrecta. Por favor intenta de nuevo.');
     setPassword('');
-  }, [password]);
+  }, [password, username]);
 
   const currentQ = drillQuestions[currentQuestion];
   const [before, after] = currentQ?.es.split('__') || ['', ''];
@@ -291,7 +298,7 @@ export default function Home() {
     return (
       <div className="wrap">
         <h1>Tiempos verbales (A1–C1)</h1>
-        <div>Loading...</div>
+        <div>Cargando...</div>
       </div>
     );
   }
@@ -326,13 +333,13 @@ export default function Home() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
             <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
-              Protected
+              Protegido
             </div>
             <div style={{ fontSize: '18px', fontWeight: 800, lineHeight: 1.2 }}>
-              Password required
+              Contraseña requerida
             </div>
             <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.35 }}>
-              Enter the password to continue.
+              Ingresa el nombre de usuario y la contraseña para continuar.
             </div>
           </div>
 
@@ -343,19 +350,42 @@ export default function Home() {
             }}
             style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
           >
+            <label htmlFor="auth-username" style={{ fontSize: '13px', fontWeight: 650 }}>
+              Nombre de usuario
+            </label>
+            <input
+              id="auth-username"
+              type="text"
+              placeholder="Nombre de usuario"
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                if (authError) setAuthError('');
+              }}
+              autoFocus
+              autoComplete="username"
+              spellCheck={false}
+              style={{
+                width: '100%',
+                border: '1px solid #d1d5db',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '14px',
+                outline: 'none',
+              }}
+            />
             <label htmlFor="auth-password" style={{ fontSize: '13px', fontWeight: 650 }}>
-              Password
+              Contraseña
             </label>
             <input
               id="auth-password"
               type="password"
-              placeholder="Password"
+              placeholder="Contraseña"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
                 if (authError) setAuthError('');
               }}
-              autoFocus
               autoComplete="current-password"
               spellCheck={false}
               style={{
@@ -394,7 +424,7 @@ export default function Home() {
                 borderRadius: '10px',
               }}
             >
-              Authenticate
+              Autenticar
             </button>
           </form>
         </div>
@@ -431,7 +461,7 @@ export default function Home() {
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }}></div>
-            <div>Generating</div>
+            <div>Generando</div>
           </div>
         </div>
       )}
@@ -470,23 +500,23 @@ export default function Home() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Question Sets</h3>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Conjuntos de preguntas</h3>
               <button
                 type="button"
                 className="btn ghost"
                 onClick={() => setQuestionSetsModalOpen(false)}
-                aria-label="Close"
+                aria-label="Cerrar"
               >
-                Close
+                Cerrar
               </button>
             </div>
 
             <section style={{ marginBottom: '8px' }}>
               <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
-                Load existing set
+                Cargar conjunto existente
               </div>
               <select
-                aria-label="Select question set"
+                aria-label="Seleccionar conjunto de preguntas"
                 value={selectedSetId}
                 onChange={(e) => {
                   const id = e.target.value;
@@ -503,9 +533,7 @@ export default function Home() {
                   color: 'var(--ink)',
                 }}
               >
-                {availableSets.length === 0 && (
-                  <option value="">No sets available</option>
-                )}
+                <option value="">Seleccionar</option>
                 {availableSets.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.title}
@@ -524,18 +552,18 @@ export default function Home() {
 
             <section>
               <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
-                Generate new set
+                Generar nuevo conjunto
               </div>
               <div style={{ marginBottom: '12px' }}>
                 <label htmlFor="generate-title" style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
-                  Title
+                  Título
                 </label>
                 <input
                   id="generate-title"
                   type="text"
                   value={generateTitle}
                   onChange={(e) => setGenerateTitle(e.target.value)}
-                  placeholder={`e.g. ${generateCount} questions`}
+                  placeholder={`ej. ${generateCount} preguntas`}
                   style={{
                     width: '100%',
                     border: '1px solid #d1d5db',
@@ -555,10 +583,11 @@ export default function Home() {
                   onClick={handleGenerateFromModal}
                   disabled={isGenerating}
                 >
-                  Generate
+                  Generar
                 </button>
+                <span>aproximadamente</span>
                 <select
-                  aria-label="Number of questions"
+                  aria-label="Número de preguntas"
                   className="btn ghost"
                   value={generateCount}
                   onChange={(e) => setGenerateCount(e.target.value)}
@@ -569,6 +598,7 @@ export default function Home() {
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
+                <span>preguntas en </span>
                 <div ref={tenseDropdownRef} style={{ position: 'relative' }}>
                   <button
                     type="button"
@@ -582,10 +612,10 @@ export default function Home() {
                     style={{ padding: '6px 10px', minWidth: '140px' }}
                   >
                     {useAllTenses
-                      ? 'All tenses'
+                      ? 'Todos los tiempos'
                       : selectedTenseIds.size === 0
-                        ? 'Select tenses'
-                        : `${selectedTenseIds.size} tense${selectedTenseIds.size !== 1 ? 's' : ''} selected`}
+                        ? 'Seleccionar tiempos'
+                        : `${selectedTenseIds.size} tiempo${selectedTenseIds.size !== 1 ? 's' : ''} seleccionado${selectedTenseIds.size !== 1 ? 's' : ''}`}
                   </button>
                   {tenseDropdownOpen && (
                     <div
@@ -621,7 +651,7 @@ export default function Home() {
                           checked={useAllTenses}
                           onChange={selectAllTenses}
                         />
-                        <span style={{ fontWeight: 600 }}>All</span>
+                        <span style={{ fontWeight: 600 }}>Todos</span>
                       </label>
                       {tenses.map((t) => (
                         <label
@@ -655,7 +685,7 @@ export default function Home() {
       <h1>Tiempos verbales (A1–C1) {isLarge ? "• Conjugaciones y Ejemplos" : ""}</h1>
       <div className="tenseSelect">
         <select
-          aria-label="Select tense"
+          aria-label="Seleccionar tiempo"
           value={selectedTense.id}
           onChange={(e) => {
             const next = tenses.find((t) => t.id === e.target.value);
@@ -692,7 +722,7 @@ export default function Home() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: '25%' }}>Person</th>
+                    <th style={{ width: '25%' }}>Persona</th>
                     <th style={{ width: '25%' }}>-ar</th>
                     <th style={{ width: '25%' }}>-er</th>
                     <th style={{ width: '25%' }}>-ir</th>
@@ -712,7 +742,7 @@ export default function Home() {
             </div>
           </div>
           <div className="card">
-            <h3 style={{ margin: '0 0 6px' }}>Examples</h3>
+            <h3 style={{ margin: '0 0 6px' }}>Ejemplos</h3>
             <ul className="examples">
               {selectedTense.examples.map((ex, i) => (
                 <li key={i}>
@@ -737,7 +767,7 @@ export default function Home() {
               </h3>
               <div className="muted">{selectedTense.desc}</div>
             </div>
-            <div className="panelTabs" role="tablist" aria-label="Tense details">
+            <div className="panelTabs" role="tablist" aria-label="Detalles del tiempo">
               <button
                 type="button"
                 className={`panelTab ${infoPanel === 'conjugations' ? 'active' : ''}`}
@@ -745,7 +775,7 @@ export default function Home() {
                 aria-selected={infoPanel === 'conjugations'}
                 onClick={() => setInfoPanel('conjugations')}
               >
-                Conjugations
+                Conjugaciones
               </button>
               <button
                 type="button"
@@ -754,18 +784,18 @@ export default function Home() {
                 aria-selected={infoPanel === 'examples'}
                 onClick={() => setInfoPanel('examples')}
               >
-                Examples
+                Ejemplos
               </button>
             </div>
           </div>
-          <div className="swipeHint muted">Tip: swipe left/right</div>
+          <div className="swipeHint muted">Consejo: desliza izquierda/derecha</div>
 
           {infoPanel === 'conjugations' ? (
             <div style={{ marginTop: '10px' }} className="tableScroll">
               <table>
                 <thead>
                   <tr>
-                    <th>Person</th>
+                    <th>Persona</th>
                     <th>-ar</th>
                     <th>-er</th>
                     <th>-ir</th>
@@ -804,7 +834,7 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setTranslationLang(translationLang === 'en' ? 'fr' : 'en')}
-          title={translationLang === 'en' ? 'Switch to French translations' : 'Switch to English translations'}
+          title={translationLang === 'en' ? 'Cambiar a traducciones en francés' : 'Cambiar a traducciones en inglés'}
           style={{
             background: 'none',
             border: 'none',
@@ -814,7 +844,7 @@ export default function Home() {
             borderRadius: '4px',
             lineHeight: 1,
           }}
-          aria-label={translationLang === 'en' ? 'Switch to French translations' : 'Switch to English translations'}
+          aria-label={translationLang === 'en' ? 'Cambiar a traducciones en francés' : 'Cambiar a traducciones en inglés'}
         >
           {translationLang === 'en' ? '🇬🇧' : '🇫🇷'}
         </button>
@@ -845,17 +875,17 @@ export default function Home() {
             </div>
             <div className="muted">{translationLang === 'en' ? currentQ.en : currentQ.fr}</div>
             <div className={drillStatus.className}>
-              {drillStatus.text || `Question ${currentQuestion + 1} of ${drillQuestions.length}`}
+              {drillStatus.text || `Pregunta ${currentQuestion + 1} de ${drillQuestions.length}`}
             </div>
             <div className="drill-actions">
               <button className={`btn ${!hasChecked ? 'primary' : ''}`} onClick={checkAnswer}>
-                Check
+                Verificar
               </button>
               <button className="btn" onClick={showHint}>
-                Hint
+                Pista
               </button>
               <button className="btn" onClick={showAnswer}>
-                Show
+                Mostrar
               </button>
             </div>
           </>
@@ -863,16 +893,16 @@ export default function Home() {
       </div>
       <div className="nav">
         <button className="btn ghost" onClick={prevQuestion}>
-          Prev
+          Anterior
         </button>
         <button className={`btn ${hasChecked ? 'primary' : 'ghost'}`} onClick={nextQuestion}>
-          Next
+          Siguiente
         </button>
         <button className="btn ghost" onClick={reshuffle}>
-          Shuffle
+          Mezclar
         </button>
         <button className="btn ghost" onClick={openQuestionSetsModal}>
-          Question Sets
+          Conjuntos de preguntas
         </button>
       </div>
       </div>

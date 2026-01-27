@@ -41,20 +41,26 @@ export type QuestionSet = {
 };
 
 export type QuestionSetIndex = {
-  sets: { id: string; title: string }[];
+  sets: { id: string; title: string; username: string }[];
 };
 
 function genId(): string {
   return crypto.randomUUID();
 }
 
-async function getIndex(): Promise<QuestionSetIndex> {
+async function getIndex(username?: string): Promise<QuestionSetIndex> {
   try {
     const h = await head(INDEX_PATH);
     const res = await fetch(h.url);
     if (!res.ok) return { sets: [] };
     const data = (await res.json()) as QuestionSetIndex;
-    return Array.isArray(data.sets) ? data : { sets: [] };
+    const sets = Array.isArray(data.sets) ? data.sets : [];
+    if (username) {
+      // Only return sets that belong to this username
+      // Legacy sets without username field are excluded
+      return { sets: sets.filter(s => s.username === username) };
+    }
+    return { sets };
   } catch (e) {
     if (e instanceof BlobNotFoundError) return { sets: [] };
     throw e;
@@ -68,29 +74,31 @@ async function saveIndex(index: QuestionSetIndex): Promise<void> {
   });
 }
 
-async function getSetById(id: string): Promise<QuestionSet[] | null> {
+async function getSetById(id: string, username?: string): Promise<Question[] | null> {
   const path = `${SETS_PREFIX}${id}.json`;
   try {
     const h = await head(path);
     const res = await fetch(h.url);
     if (!res.ok) return null;
-    const data = (await res.json()) as QuestionSet[];
-    return data;
-    //if (Array.isArray(data)) return data;
-    //const qs = data?.questions;
-    //return Array.isArray(qs) ? qs : null;
+    const data = (await res.json()) as { title: string; questions: Question[]; username?: string };
+    // Verify username matches if both username and data.username are provided
+    // If data.username is missing, allow access for backward compatibility
+    if (username && data.username && data.username !== username) {
+      return null; // User doesn't own this set
+    }
+    return Array.isArray(data.questions) ? data.questions : null;
   } catch (e) {
     if (e instanceof BlobNotFoundError) return null;
     throw e;
   }
 }
 
-async function saveSet(id: string, title: string, questions: Question[]): Promise<void> {
+async function saveSet(id: string, title: string, questions: Question[], username: string): Promise<void> {
   const path = `${SETS_PREFIX}${id}.json`;
-  await put(path, JSON.stringify({ title, questions }), BLOB_OPTS);
+  await put(path, JSON.stringify({ title, questions, username }), BLOB_OPTS);
 }
 
-async function generateQuestions(title: string, count: number, tenses: string[] | null): Promise<QuestionSet> {
+async function generateQuestions(title: string, count: number, tenses: string[] | null, username: string): Promise<QuestionSet> {
     const userPrompt = tenses
       ? `Generate a total of ${count} questions spread across the ${tenses} tenses`
       : `Generate ${count} questions spread across all of the tenses`;
@@ -112,9 +120,9 @@ async function generateQuestions(title: string, count: number, tenses: string[] 
     const setId = genId();
     const questionTenses = parsedQuestions.map((q) => q.tense);
 
-    await saveSet(setId, title, parsedQuestions);
+    await saveSet(setId, title, parsedQuestions, username);
     const index = await getIndex();
-    index.sets.push({ id: setId, title });
+    index.sets.push({ id: setId, title, username });
     await saveIndex(index);
 
     return { id: setId, title, questions: parsedQuestions };
@@ -129,19 +137,23 @@ export async function GET(request: Request) {
   const title = searchParams.get('title') || `${count} questions`;
   const listIndex = searchParams.get('list') === 'true';
   const id = searchParams.get('id')?.trim() || null;
+  const username = searchParams.get('username')?.trim() || undefined;
 
   if (listIndex) {
-    const index = await getIndex();
+    const index = await getIndex(username);
     return NextResponse.json(index);
   }
 
   if (id) {
-    const set = await getSetById(id);
+    const set = await getSetById(id, username);
     return NextResponse.json(set);
   }
 
-  if (generate) { 
-    const questionSet = await generateQuestions(title, count, tenses);
+  if (generate) {
+    if (!username) {
+      return NextResponse.json({ error: 'Username is required' }, { status: 400 });
+    }
+    const questionSet = await generateQuestions(title, count, tenses, username);
     return NextResponse.json(questionSet);
   }
 

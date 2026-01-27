@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Spanish Tenses Explorer",
-  description: "Spanish Tenses (A1–C1) • Regular Conjugations & Examples",
+  title: "Explorador de Tiempos Verbales en Español",
+  description: "Tiempos Verbales en Español (A1–C1) • Conjugaciones Regulares y Ejemplos",
 };
 
 export default function RootLayout({
@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
