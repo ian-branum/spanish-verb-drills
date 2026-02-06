@@ -75,6 +75,8 @@ export default function Home() {
   const [selectedTenseIds, setSelectedTenseIds] = useState<Set<string>>(new Set());
   const [tenseDropdownOpen, setTenseDropdownOpen] = useState(false);
   const tenseDropdownRef = useRef<HTMLDivElement>(null);
+  const [setsDropdownOpen, setSetsDropdownOpen] = useState(false);
+  const setsDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Fetch tenses from API
@@ -147,6 +149,31 @@ export default function Home() {
       .catch(err => console.error('Error fetching question set:', err));
   }, [username]);
 
+  const deleteQuestionSet = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!id || !username) return;
+    if (!confirm('¿Estás seguro de que quieres eliminar este conjunto de preguntas?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/question?id=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to delete question set');
+      }
+      // Refresh the list
+      fetchQuestionSetList();
+      // Clear selection if the deleted set was selected
+      if (selectedSetId === id) {
+        setSelectedSetId('');
+      }
+    } catch (err) {
+      console.error('Error deleting question set:', err);
+      alert('Error al eliminar el conjunto de preguntas');
+    }
+  }, [username, selectedSetId, fetchQuestionSetList]);
+
   const handleGenerateFromModal = useCallback(() => {
     setQuestionSetsModalOpen(false);
     const tenses = useAllTenses ? null : Array.from(selectedTenseIds);
@@ -195,6 +222,17 @@ export default function Home() {
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
   }, [tenseDropdownOpen]);
+
+  useEffect(() => {
+    if (!setsDropdownOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (setsDropdownRef.current && !setsDropdownRef.current.contains(e.target as Node)) {
+        setSetsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [setsDropdownOpen]);
 
   const checkAnswer = useCallback(() => {
     if (drillQuestions.length === 0) return;
@@ -336,11 +374,10 @@ export default function Home() {
               Protegido
             </div>
             <div style={{ fontSize: '18px', fontWeight: 800, lineHeight: 1.2 }}>
-              Contraseña requerida
+              Nombre de usuario y contraseña
             </div>
             <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.35 }}>
-              Ingresa el nombre de usuario y la contraseña para continuar.
-            </div>
+            Crea un nombre de usuario personal y usa la contraseña compartida. Esto te permitirá guardar preguntas privadas.            </div>
           </div>
 
           <form
@@ -515,31 +552,120 @@ export default function Home() {
               <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
                 Cargar conjunto existente
               </div>
-              <select
-                aria-label="Seleccionar conjunto de preguntas"
-                value={selectedSetId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setSelectedSetId(id);
-                  if (id) selectQuestionSet(id);
-                }}
-                style={{
-                  width: '100%',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '10px',
-                  padding: '8px 10px',
-                  fontSize: '14px',
-                  background: 'var(--card)',
-                  color: 'var(--ink)',
-                }}
-              >
-                <option value="">Seleccionar</option>
-                {availableSets.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title}
-                  </option>
-                ))}
-              </select>
+              <div ref={setsDropdownRef} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSetsDropdownOpen((o) => !o);
+                  }}
+                  aria-expanded={setsDropdownOpen}
+                  aria-haspopup="listbox"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    textAlign: 'left',
+                    justifyContent: 'space-between',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span>
+                    {selectedSetId
+                      ? availableSets.find(s => s.id === selectedSetId)?.title || 'Seleccionar'
+                      : 'Seleccionar'}
+                  </span>
+                  <span style={{ fontSize: '12px', opacity: 0.6 }}>▼</span>
+                </button>
+                {setsDropdownOpen && (
+                  <div
+                    role="listbox"
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--card)',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '10px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      padding: '8px',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      zIndex: 10,
+                    }}
+                  >
+                    {availableSets.length === 0 ? (
+                      <div style={{ padding: '8px', color: 'var(--muted)', fontSize: '14px' }}>
+                        No hay conjuntos disponibles
+                      </div>
+                    ) : (
+                      availableSets.map((s) => (
+                        <div
+                          key={s.id}
+                          role="option"
+                          aria-selected={selectedSetId === s.id}
+                          onClick={() => {
+                            setSelectedSetId(s.id);
+                            setSetsDropdownOpen(false);
+                            selectQuestionSet(s.id);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '8px 10px',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            backgroundColor: selectedSetId === s.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (selectedSetId !== s.id) {
+                              e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedSetId !== s.id) {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }
+                          }}
+                        >
+                          <span style={{ flex: 1 }}>{s.title}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => deleteQuestionSet(s.id, e)}
+                            aria-label={`Eliminar ${s.title}`}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#dc2626',
+                              cursor: 'pointer',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '16px',
+                              lineHeight: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: '8px',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </section>
 
             <div

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { config } from 'dotenv';
 import { OpenAI } from 'openai';
-import { put, head, BlobNotFoundError } from '@vercel/blob';
+import { put, head, del, BlobNotFoundError } from '@vercel/blob';
 import { baseQuestions } from './baseQuestions';
 import { systemPrompt } from './systemPrompt';
 //config({ path: '.env.local' });
@@ -158,4 +158,44 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json(baseQuestions);
+}
+
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id')?.trim() || null;
+  const username = searchParams.get('username')?.trim() || undefined;
+
+  if (!id || !username) {
+    return NextResponse.json({ error: 'id and username are required' }, { status: 400 });
+  }
+
+  try {
+    // Get the full index (without username filter) to update it
+    const index = await getIndex();
+    const setToDelete = index.sets.find(s => s.id === id && s.username === username);
+    
+    if (!setToDelete) {
+      return NextResponse.json({ error: 'Question set not found or access denied' }, { status: 404 });
+    }
+
+    // Delete the file
+    const path = `${SETS_PREFIX}${id}.json`;
+    try {
+      await del(path);
+    } catch (e) {
+      // If file doesn't exist, continue to remove from index anyway
+      if (!(e instanceof BlobNotFoundError)) {
+        throw e;
+      }
+    }
+
+    // Remove from index
+    index.sets = index.sets.filter(s => s.id !== id);
+    await saveIndex(index);
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error('Error deleting question set:', e);
+    return NextResponse.json({ error: 'Failed to delete question set' }, { status: 500 });
+  }
 }
